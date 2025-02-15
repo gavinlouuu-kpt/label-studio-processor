@@ -1,0 +1,21 @@
+label-studio-interface/
+├── README.md
+├── requirements.txt
+├── setup.py
+└── src/
+    └── label_studio_processor/
+        ├── __init__.py
+        ├── client.py
+        ├── processor.py
+        ├── utils.py
+        └── examples/
+            ├── __init__.py
+            ├── connect.py
+            └── export_annotations.py
+├── tests/
+│   ├── __init__.py
+│   ├── conftest.py
+│   ├── test_client.py
+│   ├── test_processor.py
+│   └── test_utils.py
+└── pytest.ini 

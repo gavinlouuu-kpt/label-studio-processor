@@ -1,0 +1,1 @@
+In this part we use the label studio sdk to interface with the label studio instance that we are running. We want to create a dataset where the original image is paired with the mask as well as bounding box. If there isn't a bounding box we will create it from the min and max of the x and y from segmentation annotation mask.
