@@ -20,8 +20,10 @@ def main():
     
     # Set up directories
     workspace_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
-    exported_data_dir = os.path.join(workspace_root, "exported_data")
-    yolo_output_dir = os.path.join(workspace_root, "yolo_dataset")
+    data_dir = os.path.join(workspace_root, "data")
+    export_dir = os.path.join(data_dir, "example_exported_data")
+    yolo_dir = os.path.join(data_dir, "example_yolo_dataset")
+    os.makedirs(data_dir, exist_ok=True)
     
     try:
         # First export the data from Label Studio
@@ -30,17 +32,18 @@ def main():
             url=BASE_URL,
             api_key=API_KEY,
             project_id=PROJECT_ID,
-            output_dir=exported_data_dir
+            output_dir=export_dir
         )
         
         # Then convert to YOLO format
         logger.info("\nStep 2: Converting to YOLO format...")
         successful_count = export_to_yolo(
-            exported_data_dir=exported_data_dir,
-            output_dir=yolo_output_dir
+            exported_data_dir=export_dir,
+            output_dir=yolo_dir
         )
         
         logger.info(f"Successfully converted {successful_count} annotations to YOLO format")
+        logger.info(f"YOLO dataset saved to: {yolo_dir}")
         
     except FileNotFoundError as e:
         logger.error(str(e))

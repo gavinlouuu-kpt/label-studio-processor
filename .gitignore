@@ -20,10 +20,9 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual Environment
-venv/
-env/
-ENV/
+# Data directory - ignore contents but keep structure
+/data/*
+!/data/.gitkeep
 
 # IDE
 .idea/
@@ -41,4 +40,9 @@ Thumbs.db
 
 # Local development
 .env
-.env.local 
+.env.local
+
+# Virtual Environment
+venv/
+env/
+ENV/ 

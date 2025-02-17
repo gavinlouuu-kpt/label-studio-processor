@@ -20,9 +20,10 @@ def main():
     BASE_URL = "http://localhost:8080"
     
     # Set up export directories
-    EXPORT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "exported_data"))
-    IMAGES_DIR = os.path.join(EXPORT_DIR, "images")
-    ANNOTATIONS_DIR = os.path.join(EXPORT_DIR, "annotations")
+    workspace_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+    data_dir = os.path.join(workspace_root, "data")
+    export_dir = os.path.join(data_dir, "example_exported_data")
+    os.makedirs(export_dir, exist_ok=True)
     
     try:
         # Export project data
@@ -30,10 +31,10 @@ def main():
             url=BASE_URL,
             api_key=API_KEY,
             project_id=PROJECT_ID,
-            output_dir=EXPORT_DIR,
-            # images_dir=IMAGES_DIR,
-            # annotations_dir=ANNOTATIONS_DIR
+            output_dir=export_dir
         )
+        
+        logger.info(f"Data exported to: {export_dir}")
         
     except AuthenticationError as e:
         logger.error(f"Authentication failed: {str(e)}")

@@ -82,17 +82,22 @@ def parse_annotation(annotation):
         annotation (dict): Label Studio annotation containing results
         
     Returns:
-        tuple: (mask, bbox) where:
+        tuple: (mask, bbox, class_id) where:
             - mask is a numpy array of shape (height, width)
             - bbox is a list [x_min, y_min, x_max, y_max]
+            - class_id is an integer representing the class
     """
     mask = None
     bbox = None
+    class_id = 0  # Default class
     
     for result in annotation['result']:
         # Get mask from brush labels
         if result['type'] == 'brushlabels':
             mask = decode_mask(result)
+            # Extract class from brushlabels if available
+            if result['value']['brushlabels']:
+                class_id = result['value']['brushlabels'][0]  # Use first label
             
         # Get bbox from rectangle labels
         elif result['type'] == 'rectanglelabels':
@@ -111,12 +116,16 @@ def parse_annotation(annotation):
             y_max = int(((y + height) / 100) * original_height)
             
             bbox = [x_min, y_min, x_max, y_max]
+            
+            # Extract class from rectanglelabels if available
+            if result['value']['rectanglelabels']:
+                class_id = result['value']['rectanglelabels'][0]  # Use first label
     
     # If no bbox provided, compute it from mask
     if mask is not None and bbox is None:
         bbox = mask_to_bbox(mask)
         
-    return mask, bbox
+    return mask, bbox, class_id
 
 def prepare_training_data(label_json, images_dir):
     """Prepare training data from Label Studio JSON export.
@@ -131,10 +140,12 @@ def prepare_training_data(label_json, images_dir):
             - images: Dict mapping image IDs to PIL Images
             - masks: Dict mapping image IDs to binary masks
             - box_prompts: Dict mapping image IDs to bounding boxes
+            - class_ids: Dict mapping image IDs to class IDs
     """
     images = {}
     masks = {}
     box_prompts = {}
+    class_ids = {}
     
     skipped_count = 0
     total_count = len(label_json)
@@ -151,8 +162,8 @@ def prepare_training_data(label_json, images_dir):
         annotation = task['annotations'][0]
         
         try:
-            # Parse annotation to get mask and bbox
-            mask, bbox = parse_annotation(annotation)
+            # Parse annotation to get mask, bbox and class
+            mask, bbox, class_id = parse_annotation(annotation)
             
             # Only keep samples with valid masks
             if mask is None:
@@ -161,8 +172,7 @@ def prepare_training_data(label_json, images_dir):
                 continue
             
             # Load local image using the mapping info
-            # The image filename includes the task ID prefix
-            image_filename = f"task_{task_id}_{task['file_upload']}" if 'file_upload' in task else task['file_upload']
+            image_filename = task['file_upload']
             image_path = os.path.join(images_dir, image_filename)
             if not os.path.exists(image_path):
                 logger.warning(f"Image file not found: {image_path}")
@@ -174,6 +184,7 @@ def prepare_training_data(label_json, images_dir):
             images[task_id] = image
             masks[task_id] = mask
             box_prompts[task_id] = bbox
+            class_ids[task_id] = class_id
                 
         except Exception as e:
             logger.error(f"Error processing task {task_id}: {str(e)}")
@@ -189,5 +200,6 @@ def prepare_training_data(label_json, images_dir):
     return {
         'images': images,
         'masks': masks,
-        'box_prompts': box_prompts
+        'box_prompts': box_prompts,
+        'class_ids': class_ids
     } 
