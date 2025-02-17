@@ -9,6 +9,7 @@ This package provides tools to interface with Label Studio for managing image an
 - Convert segmentation masks to bounding boxes
 - Export data in YOLO format for object detection
 - Visualization tools for verification
+- Training data preparation utilities
 
 ## Installation
 
@@ -18,20 +19,7 @@ pip install -e .
 
 ## Usage
 
-### 1. Download Images
-
-Download original images from Label Studio:
-
-```bash
-python -m label_studio_processor.examples.download_images
-```
-
-This will:
-- Connect to your Label Studio instance
-- Download all images from the specified project
-- Save them to `downloaded_images` directory
-
-### 2. Export Images and Annotations
+### 1. Download Images and Annotations
 
 Export both images and their corresponding annotations:
 
@@ -44,6 +32,27 @@ This creates an organized export with:
 - Annotations in `exported_data/annotations/`
 - Mapping file `exported_data/image_annotation_pairs.json`
 
+### 2. Prepare Training Data
+
+Process the exported data and prepare it for training:
+
+```bash
+python -m label_studio_processor.examples.prepare_training_data
+```
+
+This script:
+- Loads exported images and annotations
+- Decodes brush-based segmentation masks
+- Extracts or computes bounding boxes
+- Generates visualizations for verification
+- Provides dataset statistics
+
+The prepared data includes:
+- Original images
+- Binary segmentation masks
+- Bounding box coordinates
+- Visualization of masks and boxes
+
 ### 3. Verify Annotations
 
 Verify the exported annotations and generated masks/bounding boxes:
@@ -52,7 +61,7 @@ Verify the exported annotations and generated masks/bounding boxes:
 python -m label_studio_processor.examples.verify_utils
 ```
 
-This generates visualizations in `verification_output/` showing:
+This generates visualizations showing:
 - Original image
 - Decoded segmentation mask
 - Image with mask overlay and bounding box
@@ -68,7 +77,6 @@ python -m label_studio_processor.examples.export_yolo_format
 Creates a YOLO-compatible dataset in `yolo_dataset/`:
 - Images in `images/`
 - YOLO format labels in `labels/`
-- Bounding box visualizations in `bbox_visualizations/`
 - Dataset configuration in `dataset.yaml`
 
 ## Configuration
@@ -82,12 +90,14 @@ BASE_URL = "http://your-label-studio-url"
 
 ## Data Processing
 
-1. **Segmentation Masks**: Brush annotations are decoded using Label Studio SDK's built-in decoder
-2. **Bounding Boxes**: Generated from segmentation masks using min/max coordinates
-3. **YOLO Format**: Bounding boxes are normalized to [0,1] range and formatted as:
-   ```
-   <class_id> <x_center> <y_center> <width> <height>
-   ```
+1. **Image Export**: Images are downloaded from Label Studio and saved locally
+2. **Segmentation Masks**: 
+   - Brush annotations are decoded using Label Studio SDK
+   - Masks are converted to binary format (0 or 1)
+3. **Bounding Boxes**: 
+   - Generated from segmentation masks using min/max coordinates
+   - Or extracted from rectangle annotations if available
+4. **YOLO Format**: Bounding boxes are normalized to [0,1] range
 
 ## Directory Structure
 
@@ -117,3 +127,4 @@ label-studio-interface/
 - Verify API key has necessary permissions
 - For large datasets, exports may take some time
 - Images must be uploaded to Label Studio server first
+- Training data preparation requires exported data structure
