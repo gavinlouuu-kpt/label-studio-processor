@@ -9,7 +9,7 @@ from tqdm import tqdm
 import shutil
 from PIL import Image
 from .client import LabelStudioClient
-from .utils import decode_mask, mask_to_bbox
+from .utils import decode_mask, mask_to_bbox, bbox_to_yolo
 from .data import load_label_studio_data
 
 logger = logging.getLogger(__name__)
@@ -182,28 +182,6 @@ def export_annotations(url, api_key, project_id):
     
     return annotations, valid_tasks 
 
-def bbox_to_yolo(bbox, img_width, img_height):
-    """Convert (x_min, y_min, x_max, y_max) to YOLO format (x_center, y_center, width, height).
-    All values are normalized to [0, 1].
-    """
-    x_min, y_min, x_max, y_max = bbox
-    
-    # Calculate width and height
-    width = x_max - x_min
-    height = y_max - y_min
-    
-    # Calculate center points
-    x_center = x_min + width / 2
-    y_center = y_min + height / 2
-    
-    # Normalize to [0, 1]
-    x_center = x_center / img_width
-    y_center = y_center / img_height
-    width = width / img_width
-    height = height / img_height
-    
-    return x_center, y_center, width, height
-
 def export_to_yolo(exported_data_dir, output_dir):
     """Convert exported Label Studio data to YOLO format.
     Assumes data has already been exported using export_project_data.
@@ -232,13 +210,25 @@ def export_to_yolo(exported_data_dir, output_dir):
     
     logger.info(f"Converting {len(label_data)} annotations to YOLO format...")
     
+    # Create class mapping from all annotations
+    unique_classes = set()
+    for task in label_data:
+        for annotation in task.get('annotations', []):
+            for result in annotation.get('result', []):
+                if result.get('type') == 'brushlabels' and result['value'].get('brushlabels'):
+                    unique_classes.update(result['value']['brushlabels'])
+                elif result.get('type') == 'rectanglelabels' and result['value'].get('rectanglelabels'):
+                    unique_classes.update(result['value']['rectanglelabels'])
+    
+    # Create sorted mapping to ensure consistent IDs
+    class_map = {class_name: idx for idx, class_name in enumerate(sorted(unique_classes))}
+    logger.info(f"Found {len(class_map)} unique classes: {class_map}")
+    
     # Create dataset.yaml for YOLO
     dataset_yaml = {
         'path': os.path.abspath(output_dir),
         'train': 'images',  # relative to path
-        'names': {
-            0: 'cell'  # assuming single class 'cell'
-        }
+        'names': {idx: name for name, idx in class_map.items()}  # Use actual class names
     }
     
     # Save dataset.yaml
@@ -283,6 +273,10 @@ def export_to_yolo(exported_data_dir, output_dir):
             for annotation in task.get('annotations', []):
                 for result in annotation.get('result', []):
                     if result.get('type') == 'brushlabels':
+                        # Get class ID
+                        class_name = result['value'].get('brushlabels', ['unknown'])[0]
+                        class_id = class_map.get(class_name, 0)  # Default to 0 if unknown
+                        
                         # Decode mask
                         mask = decode_mask(result)
                         if mask is None:
@@ -293,7 +287,7 @@ def export_to_yolo(exported_data_dir, output_dir):
                         yolo_bbox = bbox_to_yolo(bbox, img_width, img_height)
                         
                         # Format: <class> <x_center> <y_center> <width> <height>
-                        yolo_line = f"0 {' '.join(f'{x:.6f}' for x in yolo_bbox)}"
+                        yolo_line = f"{class_id} {' '.join(f'{x:.6f}' for x in yolo_bbox)}"
                         yolo_annotations.append(yolo_line)
             
             # Save YOLO format annotations
@@ -306,9 +300,17 @@ def export_to_yolo(exported_data_dir, output_dir):
             logger.error(f"Error processing task {task_id}: {str(e)}")
             continue
     
+    # Save class mapping for reference
+    # Sort by class ID to ensure consistent order
+    class_items = sorted(class_map.items(), key=lambda x: x[1])
+    with open(os.path.join(output_dir, 'classes.txt'), 'w') as f:
+        for class_name, class_id in class_items:
+            f.write(f"{class_id}: {class_name}\n")
+    
     logger.info(f"Export complete! Dataset saved to: {os.path.abspath(output_dir)}")
     logger.info(f"- Images: {yolo_images_dir}")
     logger.info(f"- Labels: {yolo_labels_dir}")
     logger.info(f"- Dataset config: {os.path.join(output_dir, 'dataset.yaml')}")
+    logger.info(f"- Class mapping: {os.path.join(output_dir, 'classes.txt')}")
     
     return successful_count 

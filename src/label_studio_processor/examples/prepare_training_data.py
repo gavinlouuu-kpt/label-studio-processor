@@ -3,7 +3,7 @@ import os
 import json
 import numpy as np
 from PIL import Image
-from label_studio_processor.utils import prepare_training_data
+from label_studio_processor.utils import prepare_training_data, bbox_to_yolo
 
 def setup_logging():
     """Set up logging configuration."""
@@ -17,7 +17,7 @@ def save_prepared_data(prepared_data, output_dir):
     """Save the prepared training data to disk.
     
     Args:
-        prepared_data (dict): Dictionary containing images, masks, box_prompts and class_ids
+        prepared_data (dict): Dictionary containing images, masks, box_prompts, class_ids and class_map
         output_dir (str): Directory to save the data
     """
     # Create subdirectories
@@ -44,24 +44,28 @@ def save_prepared_data(prepared_data, output_dir):
         class_id = prepared_data['class_ids'][task_id]
         img_width, img_height = image.size
         
-        # Convert from [x1, y1, x2, y2] to YOLO format [x_center, y_center, width, height]
-        x1, y1, x2, y2 = bbox
-        x_center = (x1 + x2) / (2 * img_width)  # Normalize to [0, 1]
-        y_center = (y1 + y2) / (2 * img_height)  # Normalize to [0, 1]
-        width = (x2 - x1) / img_width  # Normalize to [0, 1]
-        height = (y2 - y1) / img_height  # Normalize to [0, 1]
+        # Convert to YOLO format
+        yolo_bbox = bbox_to_yolo(bbox, img_width, img_height)
         
         # Save in YOLO format: <class_id> <x_center> <y_center> <width> <height>
         with open(os.path.join(boxes_dir, f"{task_id}.txt"), 'w') as f:
-            f.write(f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}")
+            f.write(f"{class_id} {' '.join(f'{x:.6f}' for x in yolo_bbox)}")
     
-    # Save a summary file
+    # Save a summary file with class mapping
     summary = {
         'num_samples': len(prepared_data['images']),
-        'task_ids': list(prepared_data['images'].keys())
+        'task_ids': list(prepared_data['images'].keys()),
+        'class_mapping': prepared_data['class_map']
     }
     with open(os.path.join(output_dir, 'summary.json'), 'w') as f:
         json.dump(summary, f, indent=2)
+        
+    # Save class mapping in YOLO format (classes.txt)
+    # Sort by class ID to ensure consistent order
+    class_items = sorted(prepared_data['class_map'].items(), key=lambda x: x[1])
+    with open(os.path.join(output_dir, 'classes.txt'), 'w') as f:
+        for class_name, class_id in class_items:
+            f.write(f"{class_id}: {class_name}\n")
 
 def main():
     logger = setup_logging()
