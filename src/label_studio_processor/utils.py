@@ -161,7 +161,9 @@ def prepare_training_data(label_json, images_dir):
                 continue
             
             # Load local image using the mapping info
-            image_path = os.path.join(images_dir, task['file_upload'])
+            # The image filename includes the task ID prefix
+            image_filename = f"task_{task_id}_{task['file_upload']}" if 'file_upload' in task else task['file_upload']
+            image_path = os.path.join(images_dir, image_filename)
             if not os.path.exists(image_path):
                 logger.warning(f"Image file not found: {image_path}")
                 skipped_count += 1

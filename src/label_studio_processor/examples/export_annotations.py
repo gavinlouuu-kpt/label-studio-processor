@@ -1,21 +1,31 @@
-from label_studio_processor import LabelStudioClient
+import logging
+from label_studio_processor.export import export_annotations
 from label_studio_processor.client import AuthenticationError
 import json
 
+def setup_logging():
+    """Set up logging configuration."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+    return logging.getLogger(__name__)
+
 def main():
-    # Replace with your actual API key
+    logger = setup_logging()
+    
+    # Configuration
     API_KEY = "db746855c4ae789b7ac4c06acde8c6f482da7c05"
     PROJECT_ID = 3  # Mix beads project
+    BASE_URL = "http://localhost:8080"
     
     try:
-        # Initialize client
-        client = LabelStudioClient(
-            url="http://localhost:8080",
-            api_key=API_KEY
+        # Export and analyze annotations
+        annotations, valid_tasks = export_annotations(
+            url=BASE_URL,
+            api_key=API_KEY,
+            project_id=PROJECT_ID
         )
-        
-        print("Exporting annotations...")
-        annotations = client.export_annotations(PROJECT_ID, export_format='JSON')
         
         print(f"\nExported annotations from project {PROJECT_ID}")
         print(f"Total tasks: {len(annotations)}")
@@ -49,11 +59,11 @@ def main():
             print("\nNo tasks with valid annotations found")
             
     except AuthenticationError as e:
-        print(f"Authentication failed: {str(e)}")
+        logger.error(f"Authentication failed: {str(e)}")
     except ConnectionError as e:
-        print(f"Connection failed: {str(e)}")
+        logger.error(f"Connection failed: {str(e)}")
     except Exception as e:
-        print(f"An error occurred: {str(e)}")
+        logger.error(f"An error occurred: {str(e)}")
         import traceback
         traceback.print_exc()
 
