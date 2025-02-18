@@ -106,30 +106,34 @@ def create_class_mapping(label_json):
     return class_map
 
 def parse_annotation(annotation, class_map):
-    """Parse a single Label Studio annotation to extract mask and bounding box.
+    """Parse a single Label Studio annotation to extract masks and bounding boxes.
     
     Args:
         annotation (dict): Label Studio annotation containing results
         class_map (dict): Mapping from class names to class IDs
         
     Returns:
-        tuple: (mask, bbox, class_id, status) where:
-            - mask is a numpy array of shape (height, width)
-            - bbox is a list [x_min, y_min, x_max, y_max]
-            - class_id is an integer representing the class
+        tuple: (masks, bboxes, class_ids, status) where:
+            - masks is a list of numpy arrays of shape (height, width)
+            - bboxes is a list of [x_min, y_min, x_max, y_max]
+            - class_ids is a list of integers representing the classes
             - status is a string indicating any issues ('ok', 'no_class', 'unknown_class')
     """
-    mask = None
-    bbox = None
-    class_name = None  # Store class name first
+    masks = []
+    bboxes = []
+    class_ids = []
+    status = 'ok'
     
     for result in annotation['result']:
+        mask = None
+        bbox = None
+        class_name = None
+        
         # Get mask from brush labels
         if result['type'] == 'brushlabels':
             mask = decode_mask(result)
-            # Extract class from brushlabels if available
             if result['value'].get('brushlabels'):
-                class_name = result['value']['brushlabels'][0]  # Use first label
+                class_name = result['value']['brushlabels'][0]
             
         # Get bbox from rectangle labels
         elif result['type'] == 'rectanglelabels':
@@ -149,31 +153,40 @@ def parse_annotation(annotation, class_map):
             
             bbox = [x_min, y_min, x_max, y_max]
             
-            # Extract class from rectanglelabels if available
             if result['value'].get('rectanglelabels'):
-                class_name = result['value']['rectanglelabels'][0]  # Use first label
-    
-    # If no bbox provided, compute it from mask
-    if mask is not None and bbox is None:
-        bbox = mask_to_bbox(mask)
-    
-    # Convert class name to ID
-    if class_name is None:
-        class_id = 0
-        status = 'no_class'
-    else:
-        if class_name not in class_map:
-            class_id = 0
-            status = 'unknown_class'
-        else:
-            class_id = class_map[class_name]
-            status = 'ok'
+                class_name = result['value']['rectanglelabels'][0]
         
-    return mask, bbox, class_id, status
+        # Process this result if we have either a mask or bbox
+        if mask is not None or bbox is not None:
+            # If we have a mask but no bbox, compute bbox from mask
+            if mask is not None and bbox is None:
+                bbox = mask_to_bbox(mask)
+            
+            # Convert class name to ID
+            if class_name is None:
+                class_id = 0
+                if status == 'ok':  # Don't override more severe status
+                    status = 'no_class'
+            else:
+                if class_name not in class_map:
+                    class_id = 0
+                    if status == 'ok':  # Don't override more severe status
+                        status = 'unknown_class'
+                else:
+                    class_id = class_map[class_name]
+            
+            # Add to our lists
+            if mask is not None:
+                masks.append(mask)
+            if bbox is not None:
+                bboxes.append(bbox)
+            class_ids.append(class_id)
+    
+    return masks, bboxes, class_ids, status
 
 def prepare_training_data(label_json, images_dir):
     """Prepare training data from Label Studio JSON export.
-    Only keeps samples that have valid segmentation masks.
+    Handles multiple masks/annotations per image.
     
     Args:
         label_json (list): List of task dictionaries from Label Studio
@@ -182,9 +195,9 @@ def prepare_training_data(label_json, images_dir):
     Returns:
         dict: Dictionary containing:
             - images: Dict mapping image IDs to PIL Images
-            - masks: Dict mapping image IDs to binary masks
-            - box_prompts: Dict mapping image IDs to bounding boxes
-            - class_ids: Dict mapping image IDs to class IDs
+            - masks: Dict mapping image IDs to lists of binary masks
+            - box_prompts: Dict mapping image IDs to lists of bounding boxes
+            - class_ids: Dict mapping image IDs to lists of class IDs
             - class_map: Dict mapping class names to class IDs
     """
     # Create class mapping first
@@ -203,6 +216,7 @@ def prepare_training_data(label_json, images_dir):
     no_mask_count = 0
     missing_image_count = 0
     error_count = 0
+    total_mask_count = 0
     
     # Filter tasks with annotations first
     valid_tasks = [task for task in label_json if task.get('annotations')]
@@ -212,45 +226,57 @@ def prepare_training_data(label_json, images_dir):
     # Process each task with progress bar
     for task in tqdm(valid_tasks, desc="Processing annotations"):
         task_id = str(task['id'])
+        task_masks = []
+        task_boxes = []
+        task_classes = []
         
-        # Get first (and usually only) annotation
-        annotation = task['annotations'][0]
+        # Process all annotations for this task
+        for annotation in task['annotations']:
+            try:
+                # Parse annotation to get masks, bboxes and classes
+                ann_masks, ann_boxes, ann_classes, status = parse_annotation(annotation, class_map)
+                
+                # Track status
+                if status == 'no_class':
+                    no_class_count += 1
+                elif status == 'unknown_class':
+                    unknown_class_count += 1
+                
+                # Add valid masks and their corresponding boxes/classes
+                if ann_masks:
+                    task_masks.extend(ann_masks)
+                    task_boxes.extend(ann_boxes)
+                    task_classes.extend(ann_classes)
+                    
+            except Exception as e:
+                error_count += 1
+                logger.warning(f"Error processing annotation in task {task_id}: {str(e)}")
+                continue
         
-        try:
-            # Parse annotation to get mask, bbox and class
-            mask, bbox, class_id, status = parse_annotation(annotation, class_map)
-            
-            # Track status
-            if status == 'no_class':
-                no_class_count += 1
-            elif status == 'unknown_class':
-                unknown_class_count += 1
-            
-            # Only keep samples with valid masks
-            if mask is None:
-                no_mask_count += 1
-                continue
-            
-            # Load local image using the mapping info
-            image_filename = task['file_upload']
-            image_path = os.path.join(images_dir, image_filename)
-            if not os.path.exists(image_path):
-                missing_image_count += 1
-                continue
-                
-            image = Image.open(image_path)
-            
-            images[task_id] = image
-            masks[task_id] = mask
-            box_prompts[task_id] = bbox
-            class_ids[task_id] = class_id
-                
-        except Exception as e:
-            error_count += 1
+        # Skip if no valid masks found
+        if not task_masks:
+            no_mask_count += 1
             continue
+            
+        # Load local image using the mapping info
+        image_filename = task['file_upload']
+        image_path = os.path.join(images_dir, image_filename)
+        if not os.path.exists(image_path):
+            missing_image_count += 1
+            continue
+            
+        image = Image.open(image_path)
+        
+        # Store all data for this task
+        images[task_id] = image
+        masks[task_id] = task_masks
+        box_prompts[task_id] = task_boxes
+        class_ids[task_id] = task_classes
+        
+        total_mask_count += len(task_masks)
     
     # Log summary
-    logger.info(f"Successfully prepared {len(images)} image-mask-bbox triplets")
+    logger.info(f"Successfully prepared {len(images)} images with {total_mask_count} total masks")
     if no_annotation_count + no_class_count + unknown_class_count + no_mask_count + missing_image_count + error_count > 0:
         logger.info("Skipped tasks summary:")
         if no_annotation_count > 0:

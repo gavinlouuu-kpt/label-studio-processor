@@ -1,6 +1,6 @@
 # Label Studio Interface
 
-This package provides tools to interface with Label Studio for managing image annotations, particularly focused on cell segmentation tasks. It allows downloading original images, exporting annotations, and converting them into various formats including masks and YOLO-compatible bounding boxes.
+This package provides tools to interface with Label Studio for managing image annotations, particularly focused on cell segmentation tasks. It allows downloading original images, exporting annotations, and converting them into various formats including multiple instance masks and YOLO-compatible bounding boxes.
 
 ## Development Process
 
@@ -83,6 +83,7 @@ export_to_yolo()      # Convert to YOLO format
 
 - Download original images from Label Studio
 - Export and process brush-based segmentation annotations
+- Support for multiple instance masks per image
 - Convert segmentation masks to bounding boxes
 - Export data in YOLO format for object detection
 - Visualization tools for verification
@@ -131,12 +132,15 @@ data, statistics = prepare_and_visualize_data(
 )
 
 # Access the prepared data
-images = data['images']          # Dict of PIL Images
-masks = data['masks']           # Dict of binary masks
-box_prompts = data['box_prompts'] # Dict of bounding boxes
+images = data['images']           # Dict of PIL Images
+masks = data['masks']            # Dict of lists of binary masks
+box_prompts = data['box_prompts'] # Dict of lists of bounding boxes
+class_ids = data['class_ids']     # Dict of lists of class IDs
 
 # Access statistics
 num_samples = statistics['num_samples']
+total_masks = statistics['total_masks']
+avg_masks_per_image = statistics['avg_masks_per_image']
 avg_mask_area = statistics['avg_mask_area']
 avg_bbox_area = statistics['avg_bbox_area']
 ```
@@ -160,11 +164,12 @@ data = prepare_training_data(label_data, images_dir)
 # Get statistics
 statistics = get_dataset_statistics(data)
 
-# Visualize a single sample
+# Visualize a single sample with multiple instances
 visualize_sample(
     image=data['images']['task_id'],
-    mask=data['masks']['task_id'],
-    bbox=data['box_prompts']['task_id'],
+    masks=data['masks']['task_id'],  # List of masks
+    boxes=data['box_prompts']['task_id'],  # List of boxes
+    class_ids=data['class_ids']['task_id'],  # List of class IDs
     output_path="sample_visualization.png"
 )
 ```
@@ -194,13 +199,44 @@ BASE_URL = "http://your-label-studio-url"
 ## Data Processing
 
 1. **Image Export**: Images are downloaded from Label Studio and saved locally
+
 2. **Segmentation Masks**: 
    - Brush annotations are decoded using Label Studio SDK
+   - Multiple masks per image are supported
+   - Each mask corresponds to a separate instance
    - Masks are converted to binary format (0 or 1)
+   - Masks are saved with index suffixes (e.g., task_id_0.png, task_id_1.png)
+
 3. **Bounding Boxes**: 
    - Generated from segmentation masks using min/max coordinates
+   - One box per mask instance
    - Or extracted from rectangle annotations if available
-4. **YOLO Format**: Bounding boxes are normalized to [0,1] range
+   - Maintains correspondence with masks
+
+4. **YOLO Format**: 
+   - Bounding boxes are normalized to [0,1] range
+   - Each line in the label file corresponds to one instance
+   - Format: `class_id x_center y_center width height`
+   - Multiple lines per image for multiple instances
+
+## Output Directory Structure
+
+```
+training_data/
+├── images/
+│   ├── task_161.png
+│   └── task_162.png
+├── masks/
+│   ├── task_161_0.png  # First instance mask
+│   ├── task_161_1.png  # Second instance mask
+│   ├── task_162_0.png
+│   └── task_162_1.png
+├── boxes/
+│   ├── task_161.txt    # Contains multiple boxes
+│   └── task_162.txt
+├── classes.txt         # Class name to ID mapping
+└── summary.json       # Dataset statistics and metadata
+```
 
 ## Directory Structure
 
@@ -229,6 +265,8 @@ label-studio-interface/
 
 - Ensure Label Studio server is running and accessible
 - Verify API key has necessary permissions
-- For large datasets, exports may take some time
+- For large datasets with multiple instances, exports may take longer
 - Images must be uploaded to Label Studio server first
 - Training data preparation requires exported data structure
+- Memory usage increases with number of instances per image
+- Consider batch processing for large datasets with many instances

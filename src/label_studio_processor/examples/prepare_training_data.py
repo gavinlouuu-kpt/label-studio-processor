@@ -15,6 +15,7 @@ def setup_logging():
 
 def save_prepared_data(prepared_data, output_dir):
     """Save the prepared training data to disk.
+    Handles multiple masks per image.
     
     Args:
         prepared_data (dict): Dictionary containing images, masks, box_prompts, class_ids and class_map
@@ -28,32 +29,43 @@ def save_prepared_data(prepared_data, output_dir):
     os.makedirs(masks_dir, exist_ok=True)
     os.makedirs(boxes_dir, exist_ok=True)
     
+    total_masks = 0
+    
     # Save data for each task
     for task_id in prepared_data['images'].keys():
         # Save image
         image = prepared_data['images'][task_id]
         image.save(os.path.join(images_dir, f"{task_id}.png"))
         
-        # Save mask as PNG
-        mask = prepared_data['masks'][task_id]
-        mask_img = Image.fromarray((mask * 255).astype(np.uint8))
-        mask_img.save(os.path.join(masks_dir, f"{task_id}.png"))
-        
-        # Convert and save bounding box coordinates in YOLO format
-        bbox = prepared_data['box_prompts'][task_id]
-        class_id = prepared_data['class_ids'][task_id]
+        # Get image dimensions for YOLO format conversion
         img_width, img_height = image.size
         
-        # Convert to YOLO format
-        yolo_bbox = bbox_to_yolo(bbox, img_width, img_height)
+        # Get all masks, boxes, and classes for this task
+        task_masks = prepared_data['masks'][task_id]
+        task_boxes = prepared_data['box_prompts'][task_id]
+        task_classes = prepared_data['class_ids'][task_id]
         
-        # Save in YOLO format: <class_id> <x_center> <y_center> <width> <height>
+        # Save each mask as a separate PNG with index
+        for idx, mask in enumerate(task_masks):
+            mask_filename = f"{task_id}_{idx}.png"
+            mask_img = Image.fromarray((mask * 255).astype(np.uint8))
+            mask_img.save(os.path.join(masks_dir, mask_filename))
+        
+        # Save all bounding boxes in YOLO format in a single file
+        yolo_lines = []
+        for bbox, class_id in zip(task_boxes, task_classes):
+            yolo_bbox = bbox_to_yolo(bbox, img_width, img_height)
+            yolo_lines.append(f"{class_id} {' '.join(f'{x:.6f}' for x in yolo_bbox)}")
+        
         with open(os.path.join(boxes_dir, f"{task_id}.txt"), 'w') as f:
-            f.write(f"{class_id} {' '.join(f'{x:.6f}' for x in yolo_bbox)}")
+            f.write('\n'.join(yolo_lines))
+        
+        total_masks += len(task_masks)
     
-    # Save a summary file with class mapping
+    # Save a summary file with class mapping and statistics
     summary = {
-        'num_samples': len(prepared_data['images']),
+        'num_images': len(prepared_data['images']),
+        'total_masks': total_masks,
         'task_ids': list(prepared_data['images'].keys()),
         'class_mapping': prepared_data['class_map']
     }
