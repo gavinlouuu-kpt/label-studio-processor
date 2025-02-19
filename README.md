@@ -90,6 +90,33 @@ export_to_yolo()      # Convert to YOLO format
 - Training data preparation utilities
 - Reusable data processing functions
 
+## Using Exported Data for Training
+
+The data exported by this package is designed to work seamlessly with our companion package `yolo-sam-training`. The workflow is:
+
+1. **Export Data**:
+   ```python
+   python -m label_studio_processor.examples.prepare_training_data
+   ```
+   This creates a directory structure with:
+   - Images in `training_data/images/`
+   - Masks in `training_data/masks/`
+   - YOLO boxes in `training_data/boxes/`
+   - Dataset summary in `training_data/summary.json`
+
+2. **Train SAM Model**:
+   Install the companion package:
+   ```bash
+   pip install -e ../yolo-sam-training
+   ```
+   
+   Then run training:
+   ```python
+   python -m yolo_sam_training.examples.sam_training_example
+   ```
+
+The exported data can also be used with other training frameworks that support YOLO format or instance segmentation masks.
+
 ## Installation
 
 ```bash
