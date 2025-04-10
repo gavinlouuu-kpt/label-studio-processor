@@ -104,6 +104,47 @@ class LabelStudioClient:
         
         return annotations
 
+    def create_project(self, title, description, label_config):
+        """Create a new Label Studio project.
+        
+        Args:
+            title (str): Project title
+            description (str): Project description
+            label_config (str): Labeling configuration XML
+            
+        Returns:
+            int: Created project ID
+        """
+        response = requests.post(
+            f"{self.url}/api/projects/",
+            headers=self.headers,
+            json={
+                "title": title,
+                "description": description,
+                "label_config": label_config
+            }
+        )
+        response.raise_for_status()
+        return response.json()['id']
+
+    def import_tasks(self, project_id, tasks):
+        """Import tasks into a Label Studio project.
+        
+        Args:
+            project_id (int): Project ID to import into
+            tasks (list): List of task dictionaries to import
+            
+        Returns:
+            dict: Import result
+        """
+        response = requests.post(
+            f"{self.url}/api/projects/{project_id}/import",
+            headers=self.headers,
+            json=tasks
+        )
+        response.raise_for_status()
+        return response.json()
+
     def export_annotations(self, project_id, export_format='JSON'):
         """Export annotations from a project.
         
@@ -167,4 +208,4 @@ class LabelStudioClient:
         return download_response.content
 
 class AuthenticationError(Exception):
-    pass 
+    pass
