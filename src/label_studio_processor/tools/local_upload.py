@@ -107,13 +107,17 @@ def upload_images_to_label_studio(
         if project_id is None:
             label_config = """
             <View>
-              <Image name="image" value="$image"/>
-              <Choices name="choice" toName="image">
-                <Choice value="Class 1"/>
-                <Choice value="Class 2"/>
-                <Choice value="Class 3"/>
-              </Choices>
-            </View>
+  <Image name="image" value="$image"/>
+  <RectangleLabels name="cell_type" toName="image">
+    <Label value="Original" background="#FF0000"/>
+    <Label value="Bone" background="#00FF00"/>
+    <Label value="Brain" background="#0000FF"/>
+  </RectangleLabels>
+  <Choices name="choice" toName="image" whenTagName="cell_type">
+    <Choice value="Good Quality"/>
+    <Choice value="Bad Quality"/>
+  </Choices>
+</View>
             """
             
             project_id = client.create_project(
